@@ -1,0 +1,162 @@
+import glob
+import shutil
+import cv2
+import os
+from PIL import Image
+import seaborn as sns
+import numpy as np
+from matplotlib import pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.layers import *
+from tensorflow.keras.models import *
+from tensorflow.keras.preprocessing import * 
+from keras.applications.vgg16 import VGG16
+from keras import layers
+# from skimage.feature import local_binary_pattern
+import warnings
+# Ignore waring
+warnings.filterwarnings('ignore')
+name_list = glob.glob("/kaggle/input/covid19/COVID-19_Radiography_Dataset/COVID/images/*")
+
+labels = ['NORMAL', 'Covid']
+
+#Load the training images and labels
+X= []
+y = []
+for name in name_list:
+  y.append(1)
+  img = cv2.imread(name)
+  img = tf.keras.preprocessing.image.img_to_array(img)
+  img = cv2.resize(img,(128,128)) 
+
+  X.append((img))
+# print(X)
+name_list = glob.glob("/kaggle/input/covid19/COVID-19_Radiography_Dataset/Normal/images/*")
+
+for name in name_list:
+  y.append(0)
+  img = cv2.imread(name) 
+  img = tf.keras.preprocessing.image.img_to_array(img)
+  img = cv2.resize(img,(128,128)) 
+  X.append((img))
+len(X)
+X = np.array(X)
+y = np.array(y).reshape(-1,1)
+print(len(X))
+print(X.shape)
+print(y.shape)
+from sklearn.model_selection import train_test_split
+X_train, X_test,y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
+X_test, X_val, y_test, y_val = train_test_split(X_test, y_test, test_size=0.2, random_state=42)
+
+print( X_train.shape)
+print(X_val.shape)
+print( X_test.shape)
+X_train = X_train /255
+X_test_scaled = X_test / 255
+X_val = X_val/255
+base_model = VGG16(weights='imagenet', include_top=False, input_shape=(128,128, 3))
+
+for layer in base_model.layers:
+    layer.trainable = False
+
+model = Sequential()
+model.add(base_model)
+model.add(Flatten())
+model.add(Dense(1024))
+model.add(Activation("relu"))
+model.add(Dense(512))
+model.add(Activation("relu"))
+model.add(Dense(1))
+model.add(Activation("sigmoid"))
+# Summary model 
+model.summary()
+from tensorflow.keras.callbacks import EarlyStopping
+learning_rate = 0.00001  # Tốc độ học ban đầu
+decay_steps = 10         # Số epoch để áp dụng decay
+decay_rate = 1            # Tỷ lệ giảm learning rate
+
+# Khởi tạo learning rate scheduler
+lr_scheduler = tf.keras.optimizers.schedules.ExponentialDecay(learning_rate, decay_steps, decay_rate)
+optimizer1 = tf.keras.optimizers.Adam(learning_rate = lr_scheduler)
+early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+
+model.compile(optimizer = optimizer1, loss = 'binary_crossentropy',metrics =['accuracy'])
+
+history = model.fit(X_train,y_train,batch_size = 32, epochs =40,validation_data =(X_val, y_val), callbacks=[early_stop])
+from matplotlib import pyplot  as plt
+plt.plot(history.history['accuracy'])
+plt.plot(history.history['val_accuracy'])
+plt.title('model accuracy')
+plt.ylabel('accuracy')
+plt.xlabel('epoch')
+plt.legend(['train','test'],loc ='upper left')
+plt.show()
+#summarize history for loss
+plt.plot(history.history['loss'])
+plt.plot(history.history['val_loss'])
+plt.title('model loss')
+plt.ylabel('loss')
+plt.xlabel('epoch')
+plt.legend(['train','val'],loc ='upper left')
+plt.show()
+model.save('model1.h5')
+model1 = load_model('/kaggle/working/model1.h5')
+y_hat = model1.predict(X_test_scaled)
+def predict(y_hat):
+    y_hat[y_hat >= 0.5] =1
+    y_hat[y_hat<0.5] =0
+    return y_hat
+y_pred = predict(y_hat)
+from sklearn.metrics import accuracy_score
+accuracy = accuracy_score(y_test, y_pred)
+print(accuracy)
+result= []
+real_result = []
+for i in y_pred:
+    if i==0:
+        result.append('Normal')
+    if i==1:
+     result.append('Covid')
+for i in y_pred:
+    if i==0:
+        real_result.append('Normal')
+    if i==1:
+        real_result.append('Covid')
+ 
+from sklearn.metrics import confusion_matrix, classification_report, accuracy_score
+labels = ['Covid', 'Normal']
+report = classification_report(y_test, y_pred, target_names=labels)
+print(report)
+accuracy = accuracy_score(y_test, y_pred)
+
+print(f"Accuracy: {accuracy}")
+
+cm = confusion_matrix(y_test, y_pred)
+print(cm)
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+
+
+tick_labels = ['Covid', 'Normal']
+plt.xticks(np.arange(len(tick_labels)) + 0.5, tick_labels)
+plt.yticks(np.arange(len(tick_labels)) + 0.5, tick_labels)
+
+plt.xlabel('Predicted')
+plt.ylabel('True')
+
+
+plt.title('Confusion Matrix')
+plt.show()
+
+import matplotlib.pyplot as plt
+def show_image_with_prediction(image_array, prediction, label):
+    plt.imshow(image_array)
+    plt.axis('off')
+    plt.title(f'Prediction: {prediction}, Label: {label}')
+    plt.show()
+image_arrays = X_test
+predictions = result
+label = real_result
+for image_array, prediction, label in zip(image_arrays, predictions, label):
+    show_image_with_prediction(image_array/255, prediction, label)
+ 
