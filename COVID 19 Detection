@@ -76,7 +76,6 @@ learning_rate = 0.00001  # Tốc độ học ban đầu
 decay_steps = 10         # Số epoch để áp dụng decay
 decay_rate = 1            # Tỷ lệ giảm learning rate
 
-# Khởi tạo learning rate scheduler
 lr_scheduler = tf.keras.optimizers.schedules.ExponentialDecay(learning_rate, decay_steps, decay_rate)
 optimizer1 = tf.keras.optimizers.Adam(learning_rate = lr_scheduler)
 early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
@@ -159,4 +158,48 @@ predictions = result
 label = real_result
 for image_array, prediction, label in zip(image_arrays, predictions, label):
     show_image_with_prediction(image_array/255, prediction, label)
+
+name_list = glob.glob("/kaggle/input/covid19-data/Covid/COVID-19_Radiography_Dataset/Prediction_Input/*")
+
+#Load the training images and labels
+X_input= []
+for name in name_list:
+  img = cv2.imread(name)
+  img = tf.keras.preprocessing.image.img_to_array(img)
+  img = cv2.resize(img,(128,128)) 
+
+  X_input.append((img))
+
+X_input=np.array(X_input)
+X_input = X_input/255
+model1 = load_model('/kaggle/working/model1.h5')
+y_hat = model1.predict(X_input)
+y_pred = predict(y_hat)
+
+result_pred =[]
+for i in y_pred:
+    if i==0:
+        result_pred.append('Normal')
+    if i==1:
+        result_pred.append('Covid')
+import matplotlib.pyplot as plt
+import os
+
+def show_image_with_prediction(image_array, prediction):
+    plt.imshow(image_array)
+    plt.axis('off')
+    plt.title(f'Prediction: {prediction}')
+    plt.show()
+
+image_arrays = X_input
+predictions = result_pred
+for image_array, prediction in zip(image_arrays, predictions):
+    show_image_with_prediction(image_array, prediction)
+output_dir = "/kaggle/working/images"  
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+for i, (image_array, prediction) in enumerate(zip(image_arrays, predictions)):
+    filename = f"image_{i}_prediction_{prediction}.jpg"
+    file_path = os.path.join(output_dir, filename)
+    plt.savefig(file_path)
  
